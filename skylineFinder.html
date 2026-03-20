@@ -1,0 +1,945 @@
+<!-- HOW TO USE: Double-click this file to open it in your browser. No installation needed. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skyline Chili Field Journal</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:       #003087;
+      --navy-dark:  #002266;
+      --yellow:     #FFD100;
+      --parchment:  #FDF6E3;
+      --parch-dark: #EDE0C4;
+      --brown:      #4A3728;
+      --muted:      #7A6A55;
+      --red-err:    #b00020;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--parchment);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      color: var(--brown);
+    }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    header {
+      background: var(--navy);
+      color: white;
+      padding: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(0deg,  transparent, transparent 28px, rgba(255,255,255,0.04) 28px, rgba(255,255,255,0.04) 29px),
+        repeating-linear-gradient(90deg, transparent, transparent 28px, rgba(255,255,255,0.04) 28px, rgba(255,255,255,0.04) 29px);
+      pointer-events: none;
+    }
+    .header-inner {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 20px 28px 14px;
+      position: relative;
+    }
+    .compass svg { width: 52px; height: 52px; display: block; }
+    .header-text h1 {
+      font-size: 1.65rem;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      line-height: 1.1;
+    }
+    .header-text .tagline {
+      font-size: 0.82rem;
+      opacity: 0.72;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+    .header-bar { height: 5px; background: var(--yellow); }
+
+    /* ── Main ─────────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* ── Section labels ───────────────────────────────────────── */
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--parch-dark);
+    }
+
+    /* ── Shared card base ─────────────────────────────────────── */
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 18px rgba(74,55,40,0.10);
+      border: 1px solid var(--parch-dark);
+    }
+
+    /* ── 1. FINDER CARD ───────────────────────────────────────── */
+    .finder-card {
+      padding: 28px 32px;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 0.88rem;
+      margin-bottom: 8px;
+      color: var(--brown);
+      letter-spacing: 0.3px;
+    }
+    .input-row { display: flex; gap: 10px; }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 11px 14px;
+      font-size: 1rem;
+      border: 2px solid var(--parch-dark);
+      border-radius: 8px;
+      outline: none;
+      background: var(--parchment);
+      color: var(--brown);
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: var(--navy); background: white; }
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    button#find-btn {
+      background: var(--navy);
+      color: white;
+      border: none;
+      padding: 11px 22px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    button#find-btn:hover:not(:disabled) { background: var(--navy-dark); }
+    button#find-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .hint { margin-top: 7px; font-size: 0.8rem; color: var(--muted); }
+
+    .spinner-wrap { display: none; text-align: center; padding: 28px 0 12px; }
+    .spinner {
+      display: inline-block;
+      width: 36px; height: 36px;
+      border: 4px solid var(--parch-dark);
+      border-top-color: var(--navy);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-wrap p { margin-top: 10px; color: var(--muted); font-size: 0.9rem; }
+
+    .error-box {
+      display: none;
+      margin-top: 18px;
+      background: #fff0f0;
+      border: 1px solid #f5c0c0;
+      border-radius: 8px;
+      padding: 13px 16px;
+      color: var(--red-err);
+      font-size: 0.93rem;
+    }
+
+    #results { display: none; margin-top: 24px; }
+    hr.divider { border: none; border-top: 1px dashed var(--parch-dark); margin: 20px 0; }
+
+    .resolved-address {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+      padding: 8px 12px;
+      background: var(--parchment);
+      border-radius: 6px;
+      border-left: 3px solid var(--navy);
+    }
+    .resolved-address strong { color: var(--brown); }
+
+    .far-warning {
+      display: none;
+      background: #fffbe6;
+      border: 1px solid #ffe066;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.88rem;
+      color: #7a6000;
+      margin-bottom: 14px;
+    }
+
+    .winner-card {
+      border: 2px solid var(--yellow);
+      border-radius: 10px;
+      padding: 18px 20px;
+      background: #fffde6;
+      margin-bottom: 14px;
+    }
+    .winner-badge {
+      display: inline-block;
+      background: var(--yellow);
+      color: var(--navy);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+    }
+    .winner-name { font-size: 1.1rem; font-weight: 700; color: var(--brown); }
+    .winner-address { font-size: 0.88rem; color: var(--muted); margin-top: 3px; }
+    .winner-distance {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--yellow);
+      margin-top: 10px;
+      line-height: 1;
+      text-shadow: 0 1px 0 rgba(0,0,0,0.10);
+    }
+    .winner-distance span { font-size: 1rem; font-weight: 600; color: var(--muted); margin-left: 5px; }
+
+    .map-links { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .map-links a {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 7px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-maps       { background: #e8f0fe; color: #1a73e8; }
+    .btn-maps:hover { background: #d2e3fc; }
+    .btn-directions       { background: var(--navy); color: white; }
+    .btn-directions:hover { background: var(--navy-dark); }
+
+    .nearby-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .nearby-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+    .nearby-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border: 1px solid var(--parch-dark);
+      border-radius: 8px;
+      background: var(--parchment);
+    }
+    .nearby-info { flex: 1; min-width: 0; }
+    .nearby-name {
+      font-weight: 600;
+      font-size: 0.92rem;
+      color: var(--brown);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nearby-addr {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nearby-dist {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin-left: 14px;
+      white-space: nowrap;
+    }
+
+    /* ── 2. CAROUSEL ──────────────────────────────────────────── */
+    .carousel-card {
+      overflow: hidden;
+    }
+
+    .carousel-viewport {
+      position: relative;
+      overflow: hidden;
+      background: #111;
+      /* height set by JS based on image aspect */
+    }
+
+    .carousel-track {
+      display: flex;
+      transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
+    }
+
+    .carousel-slide {
+      flex: 0 0 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a1410;
+      min-height: 300px;
+      max-height: 520px;
+    }
+
+    .carousel-slide img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      max-height: 520px;
+    }
+
+    /* prev / next buttons */
+    .carousel-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 10;
+      background: rgba(0,0,0,0.55);
+      color: white;
+      border: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+      backdrop-filter: blur(4px);
+    }
+    .carousel-btn:hover { background: rgba(0,48,135,0.80); }
+    .carousel-btn.prev { left: 12px; }
+    .carousel-btn.next { right: 12px; }
+
+    /* caption bar */
+    .carousel-caption {
+      position: absolute;
+      bottom: 0;
+      left: 0; right: 0;
+      padding: 10px 16px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.65));
+      color: white;
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .caption-text { opacity: 0.92; }
+    .caption-gps {
+      font-size: 0.72rem;
+      opacity: 0.65;
+      white-space: nowrap;
+    }
+
+    /* dot indicators */
+    .carousel-dots {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 7px;
+      padding: 12px 16px;
+      background: var(--parchment);
+      border-top: 1px solid var(--parch-dark);
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--parch-dark);
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+      border: none;
+      padding: 0;
+    }
+    .dot.active {
+      background: var(--navy);
+      transform: scale(1.3);
+    }
+
+    /* ── 3. MAP CARD ──────────────────────────────────────────── */
+    .map-card { overflow: hidden; }
+
+    #map { height: 520px; width: 100%; }
+
+    .map-legend {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 10px 16px;
+      background: var(--parchment);
+      border-top: 1px solid var(--parch-dark);
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .legend-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Leaflet popup photo */
+    .photo-popup img {
+      display: block;
+      max-width: 220px;
+      max-height: 160px;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+    .photo-popup .photo-caption { font-size: 0.78rem; color: #666; text-align: center; }
+
+    /* Custom Leaflet marker divs */
+    .skyline-marker {
+      width: 22px; height: 22px;
+      background: var(--navy);
+      border: 2.5px solid var(--yellow);
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .photo-marker {
+      width: 34px; height: 34px;
+      background: white;
+      border: 2.5px solid var(--navy);
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    /* ── Footer ───────────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 18px 16px;
+      font-size: 0.76rem;
+      color: var(--muted);
+      line-height: 1.7;
+      border-top: 1px solid var(--parch-dark);
+    }
+    footer a { color: var(--muted); }
+
+    /* ── Mobile ───────────────────────────────────────────────── */
+    @media (max-width: 540px) {
+      .finder-card { padding: 18px 16px; }
+      .header-inner { padding: 16px 16px 12px; gap: 12px; }
+      .header-text h1 { font-size: 1.3rem; }
+      .input-row { flex-direction: column; }
+      button#find-btn { width: 100%; }
+      #map { height: 360px; }
+      .carousel-slide { min-height: 220px; max-height: 360px; }
+      .carousel-slide img { max-height: 360px; }
+      .winner-distance { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="compass">
+      <svg viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <circle cx="26" cy="26" r="24" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+        <circle cx="26" cy="26" r="18" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <polygon points="26,4 29,24 26,20 23,24"   fill="#FFD100"/>
+        <polygon points="26,48 29,28 26,32 23,28"  fill="rgba(255,255,255,0.30)"/>
+        <polygon points="48,26 28,23 32,26 28,29"  fill="rgba(255,255,255,0.30)"/>
+        <polygon points="4,26 24,23 20,26 24,29"   fill="rgba(255,255,255,0.30)"/>
+        <circle cx="26" cy="26" r="4" fill="white" opacity="0.85"/>
+        <circle cx="26" cy="26" r="2" fill="#FFD100"/>
+        <text x="26"   y="13.5" text-anchor="middle" font-size="5.5" font-weight="800" fill="#FFD100"               font-family="Arial,sans-serif">N</text>
+        <text x="26"   y="44"   text-anchor="middle" font-size="5"   font-weight="700" fill="rgba(255,255,255,0.5)" font-family="Arial,sans-serif">S</text>
+        <text x="42.5" y="27.5" text-anchor="middle" font-size="5"   font-weight="700" fill="rgba(255,255,255,0.5)" font-family="Arial,sans-serif">E</text>
+        <text x="9.5"  y="27.5" text-anchor="middle" font-size="5"   font-weight="700" fill="rgba(255,255,255,0.5)" font-family="Arial,sans-serif">W</text>
+      </svg>
+    </div>
+    <div class="header-text">
+      <h1>Skyline Chili Field Journal</h1>
+      <p class="tagline">Chart your course · Find every location</p>
+    </div>
+  </div>
+  <div class="header-bar"></div>
+</header>
+
+<main>
+
+  <!-- ── 1. FIND NEAREST ────────────────────────────────────── -->
+  <div>
+    <div class="section-label">Find Nearest Location</div>
+    <div class="card finder-card">
+      <label for="address-input">Enter Your Address</label>
+      <div class="input-row">
+        <input type="text" id="address-input" placeholder="e.g. 123 Main St, Cincinnati, OH"
+               autocomplete="off" spellcheck="false">
+        <button id="find-btn" onclick="findNearest()">Find Nearest</button>
+      </div>
+      <p class="hint">Include city and state for best results</p>
+
+      <div class="spinner-wrap" id="spinner">
+        <div class="spinner"></div>
+        <p>Charting your position&hellip;</p>
+      </div>
+
+      <div class="error-box" id="error-box"></div>
+
+      <div id="results">
+        <hr class="divider">
+        <div class="resolved-address" id="resolved-address"></div>
+        <div class="far-warning" id="far-warning">
+          You appear to be far from any Skyline Chili location. The nearest one is over 100 miles away &mdash;
+          Skyline Chili is primarily in the Cincinnati area, Northern Kentucky, Dayton, Columbus, Indianapolis,
+          Fort Wayne, and Southwest Florida.
+        </div>
+        <div class="winner-card" id="winner-card">
+          <div class="winner-badge">Nearest Location</div>
+          <div class="winner-name"    id="winner-name"></div>
+          <div class="winner-address" id="winner-address"></div>
+          <div class="winner-distance" id="winner-distance"></div>
+        </div>
+        <div class="map-links">
+          <a id="maps-link"       class="btn-maps"       target="_blank" rel="noopener">View on Google Maps</a>
+          <a id="directions-link" class="btn-directions" target="_blank" rel="noopener">Get Directions</a>
+        </div>
+        <div class="nearby-title">Also Nearby</div>
+        <ul class="nearby-list" id="nearby-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 2. PHOTO CAROUSEL ──────────────────────────────────── -->
+  <div>
+    <div class="section-label">Field Photographs</div>
+    <div class="card carousel-card">
+      <div class="carousel-viewport" id="carousel-viewport">
+        <div class="carousel-track" id="carousel-track"></div>
+        <button class="carousel-btn prev" id="carousel-prev" aria-label="Previous">&#8592;</button>
+        <button class="carousel-btn next" id="carousel-next" aria-label="Next">&#8594;</button>
+        <div class="carousel-caption" id="carousel-caption">
+          <span class="caption-text"  id="caption-text"></span>
+          <span class="caption-gps"   id="caption-gps"></span>
+        </div>
+      </div>
+      <div class="carousel-dots" id="carousel-dots"></div>
+    </div>
+  </div>
+
+  <!-- ── 3. EXPEDITION MAP ──────────────────────────────────── -->
+  <div>
+    <div class="section-label">Expedition Map</div>
+    <div class="card map-card">
+      <div id="map"></div>
+      <div class="map-legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#003087; border:2px solid #FFD100;"></div>
+          <span>Skyline Chili location</span>
+        </div>
+        <div class="legend-item">
+          <span style="font-size:14px; line-height:1;">📷</span>
+          <span>Photo taken here</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Location data may not reflect recent openings or closures &mdash; verify hours before visiting.<br>
+  Map tiles &copy; <a href="https://carto.com/" target="_blank" rel="noopener">CartoDB</a> &amp;
+  <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
+  Geocoding by <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener">Nominatim</a>.
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ─── SKYLINE CHILI LOCATIONS ──────────────────────────────────────────────────
+const SKYLINE_LOCATIONS = [
+  { name: "Downtown Cincinnati",  address: "254 E 4th St",            city: "Cincinnati, OH",   lat: 39.1014, lng: -84.5120 },
+  { name: "Clifton",              address: "321 Calhoun St",           city: "Cincinnati, OH",   lat: 39.1314, lng: -84.5187 },
+  { name: "Hyde Park",            address: "3714 Erie Ave",            city: "Cincinnati, OH",   lat: 39.1465, lng: -84.4366 },
+  { name: "Kenwood",              address: "7674 Kenwood Rd",          city: "Cincinnati, OH",   lat: 39.1904, lng: -84.3973 },
+  { name: "Blue Ash",             address: "9440 Civic Centre Blvd",   city: "Blue Ash, OH",     lat: 39.2320, lng: -84.3799 },
+  { name: "Montgomery",           address: "9079 Montgomery Rd",       city: "Montgomery, OH",   lat: 39.2285, lng: -84.3468 },
+  { name: "Mason",                address: "5440 Natorp Blvd",         city: "Mason, OH",        lat: 39.3601, lng: -84.3097 },
+  { name: "Anderson Township",    address: "7790 Five Mile Rd",        city: "Cincinnati, OH",   lat: 39.1109, lng: -84.3341 },
+  { name: "Madeira",              address: "6980 Miami Ave",           city: "Madeira, OH",      lat: 39.1878, lng: -84.3680 },
+  { name: "Westwood",             address: "3020 Harrison Ave",        city: "Cincinnati, OH",   lat: 39.1391, lng: -84.5812 },
+  { name: "Price Hill",           address: "3714 Warsaw Ave",          city: "Cincinnati, OH",   lat: 39.1051, lng: -84.5623 },
+  { name: "Norwood",              address: "2231 Sherman Ave",         city: "Norwood, OH",      lat: 39.1556, lng: -84.4601 },
+  { name: "Loveland",             address: "10812 Loveland Madeira Rd",city: "Loveland, OH",     lat: 39.2687, lng: -84.2632 },
+  { name: "Milford",              address: "1202 State Route 131",     city: "Milford, OH",      lat: 39.1748, lng: -84.2968 },
+  { name: "Eastgate",             address: "4421 Eastgate Blvd",       city: "Cincinnati, OH",   lat: 39.1093, lng: -84.2820 },
+  { name: "Tri-County",           address: "11395 Princeton Pike",     city: "Springdale, OH",   lat: 39.2862, lng: -84.4729 },
+  { name: "Colerain",             address: "3759 Colerain Ave",        city: "Cincinnati, OH",   lat: 39.1898, lng: -84.5551 },
+  { name: "Delhi",                address: "5000 Delhi Ave",           city: "Cincinnati, OH",   lat: 39.0937, lng: -84.6065 },
+  { name: "Fairfield",            address: "5555 Dixie Hwy",           city: "Fairfield, OH",    lat: 39.3376, lng: -84.5607 },
+  { name: "Monroe",               address: "600 Hollenbeck Rd",        city: "Monroe, OH",       lat: 39.4384, lng: -84.3660 },
+  { name: "Lebanon",              address: "1100 Columbus Ave",        city: "Lebanon, OH",       lat: 39.4337, lng: -84.2037 },
+  { name: "Goshen",               address: "6528 State Route 28",      city: "Goshen, OH",       lat: 39.2298, lng: -84.1636 },
+  { name: "Kings Mills",          address: "2356 Kings Island Dr",     city: "Kings Mills, OH",  lat: 39.3512, lng: -84.2691 },
+  { name: "Mt. Washington",       address: "2230 Beechmont Ave",       city: "Cincinnati, OH",   lat: 39.1001, lng: -84.3940 },
+  { name: "Walnut Hills",         address: "2607 Vine St",             city: "Cincinnati, OH",   lat: 39.1244, lng: -84.4978 },
+  { name: "Oakley",               address: "3165 Madison Rd",          city: "Cincinnati, OH",   lat: 39.1462, lng: -84.4623 },
+  { name: "Cheviot",              address: "3888 Harrison Ave",        city: "Cheviot, OH",      lat: 39.1478, lng: -84.6140 },
+  { name: "Symmes Township",      address: "11311 Montgomery Rd",      city: "Cincinnati, OH",   lat: 39.2601, lng: -84.3237 },
+  { name: "Forest Park",          address: "1200 W Kemper Rd",         city: "Forest Park, OH",  lat: 39.2901, lng: -84.5062 },
+  { name: "Florence (Turfway)",   address: "7715 Turfway Rd",          city: "Florence, KY",     lat: 38.9929, lng: -84.6318 },
+  { name: "Florence (Mall Rd)",   address: "7399 Mall Rd",             city: "Florence, KY",     lat: 38.9872, lng: -84.6582 },
+  { name: "Erlanger",             address: "3533 Dixie Hwy",           city: "Erlanger, KY",     lat: 39.0168, lng: -84.5999 },
+  { name: "Covington",            address: "131 Pike St",              city: "Covington, KY",    lat: 39.0831, lng: -84.5092 },
+  { name: "Newport",              address: "200 Carothers Rd",         city: "Newport, KY",      lat: 39.0893, lng: -84.4898 },
+  { name: "Alexandria",           address: "8620 Alexandria Pike",     city: "Alexandria, KY",   lat: 38.9601, lng: -84.3881 },
+  { name: "Ft. Wright",           address: "2887 Dixie Hwy",           city: "Ft. Wright, KY",   lat: 39.0538, lng: -84.5601 },
+  { name: "Edgewood",             address: "3401 Turkeyfoot Rd",       city: "Edgewood, KY",     lat: 39.0234, lng: -84.5768 },
+  { name: "Crestview Hills",      address: "2618 Dixie Hwy",           city: "Crestview Hills, KY", lat: 39.0034, lng: -84.5901 },
+  { name: "Hamilton (North)",     address: "1588 Main St",             city: "Hamilton, OH",     lat: 39.3956, lng: -84.5613 },
+  { name: "Hamilton (South)",     address: "830 NW Washington Blvd",   city: "Hamilton, OH",     lat: 39.3801, lng: -84.5745 },
+  { name: "Middletown",           address: "3301 Towne Blvd",          city: "Middletown, OH",   lat: 39.5201, lng: -84.3512 },
+  { name: "Kettering",            address: "3211 Wilmington Pike",     city: "Kettering, OH",    lat: 39.6856, lng: -84.1688 },
+  { name: "Beavercreek",          address: "2423 Esquire Dr",          city: "Beavercreek, OH",  lat: 39.7234, lng: -84.0634 },
+  { name: "Dayton North",         address: "5901 N Dixie Dr",          city: "Dayton, OH",       lat: 39.8012, lng: -84.1901 },
+  { name: "Centerville",          address: "6450 Far Hills Ave",       city: "Centerville, OH",  lat: 39.6312, lng: -84.1534 },
+  { name: "Springboro",           address: "980 N Main St",            city: "Springboro, OH",   lat: 39.5601, lng: -84.2312 },
+  { name: "Xenia",                address: "1670 W Park Square",       city: "Xenia, OH",        lat: 39.6856, lng: -83.9312 },
+  { name: "Easton",               address: "3792 Easton Square Pl",    city: "Columbus, OH",     lat: 40.0523, lng: -82.9068 },
+  { name: "Polaris",              address: "8874 Owenfield Dr",        city: "Columbus, OH",     lat: 40.1423, lng: -82.9801 },
+  { name: "Dublin",               address: "6425 Sawmill Rd",          city: "Dublin, OH",       lat: 40.0801, lng: -83.0934 },
+  { name: "Columbus West",        address: "3555 W Broad St",          city: "Columbus, OH",     lat: 39.9612, lng: -83.0723 },
+  { name: "Worthington",          address: "7235 N High St",           city: "Worthington, OH",  lat: 40.0934, lng: -83.0123 },
+  { name: "Castleton",            address: "5767 E 86th St",           city: "Indianapolis, IN", lat: 39.9034, lng: -86.0212 },
+  { name: "Greenwood",            address: "1266 N US 31",             city: "Greenwood, IN",    lat: 39.6312, lng: -86.1068 },
+  { name: "Lawrence",             address: "7225 Pendleton Pike",      city: "Lawrence, IN",     lat: 39.8523, lng: -85.9901 },
+  { name: "Fort Wayne",           address: "5721 Coventry Ln",         city: "Fort Wayne, IN",   lat: 41.0312, lng: -85.1401 },
+  { name: "Naples (Tamiami)",     address: "4530 Tamiami Trail N",     city: "Naples, FL",       lat: 26.1801, lng: -81.7612 },
+  { name: "Naples (Pine Ridge)",  address: "2365 Pine Ridge Rd",       city: "Naples, FL",       lat: 26.2156, lng: -81.7523 },
+  { name: "Bonita Springs",       address: "27270 Bay Landing Dr",     city: "Bonita Springs, FL", lat: 26.3401, lng: -81.7834 },
+  { name: "Fort Myers",           address: "4420 Fowler St",           city: "Fort Myers, FL",   lat: 26.6134, lng: -81.8612 },
+  { name: "Cape Coral",           address: "1609 SE 47th Ter",         city: "Cape Coral, FL",   lat: 26.5623, lng: -81.9423 },
+];
+
+// ─── PHOTO DATA ───────────────────────────────────────────────────────────────
+// GPS extracted from EXIF. Photos without GPS still appear in carousel.
+const PHOTOS = [
+  { file: '2013-04-20 13.26.33.jpg',          caption: 'April 2013',          lat: 41.519167, lng: -81.474167, gpsLabel: '41.519°N 81.474°W' },
+  { file: 'IMG_0083.JPG',                      caption: 'IMG_0083',             lat: 39.269333, lng: -84.434167, gpsLabel: '39.269°N 84.434°W' },
+  { file: 'IMG_20200613_103604.jpg',           caption: 'June 13, 2020',        lat: 33.782331, lng: -84.411622, gpsLabel: '33.782°N 84.412°W' },
+  { file: 'IMG_20201024_113350.jpg',           caption: 'October 24, 2020',     lat: 39.143514, lng: -84.519208, gpsLabel: '39.144°N 84.519°W' },
+  { file: 'IMG_20201230_135724.jpg',           caption: 'December 30, 2020',    lat: 38.685408, lng: -84.600194, gpsLabel: '38.685°N 84.600°W' },
+  { file: 'IMG_20201230_135951.jpg',           caption: 'December 30, 2020',    lat: null, lng: null, gpsLabel: null },
+  { file: 'Screenshot_2015-12-21-19-38-34.png',caption: 'December 21, 2015',   lat: null, lng: null, gpsLabel: null },
+];
+
+// blob URLs resolved after zip loads: filename → objectURL
+const photoUrls = {};
+
+// ─── LOAD PHOTOS FROM ZIP ────────────────────────────────────────────────────
+async function loadPhotos() {
+  const viewport = document.getElementById('carousel-viewport');
+  viewport.insertAdjacentHTML('beforeend',
+    '<div id="photo-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1a1410;color:#aaa;font-size:0.9rem;z-index:5;">Loading photos…</div>'
+  );
+
+  // On file:// (local), fetch() is blocked by the browser — use the folder directly.
+  // On http(s):// (GitHub Pages etc.), load from the zip.
+  if (location.protocol === 'file:') {
+    PHOTOS.forEach(p => { photoUrls[p.file] = `skylinePhotos/${p.file}`; });
+  } else {
+    try {
+      const resp = await fetch('skylinePhotos.zip');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const zip = await JSZip.loadAsync(await resp.blob());
+
+      for (const [path, entry] of Object.entries(zip.files)) {
+        if (entry.dir) continue;
+        const fname = path.split('/').pop();
+        if (!fname) continue;
+        const mime  = fname.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+        const data  = await entry.async('arraybuffer');
+        photoUrls[fname] = URL.createObjectURL(new Blob([data], { type: mime }));
+      }
+    } catch (e) {
+      console.error('Could not load skylinePhotos.zip:', e);
+    }
+  }
+
+  document.getElementById('photo-loading')?.remove();
+  buildCarousel();
+  addPhotoMarkers();
+}
+
+// ─── CAROUSEL ─────────────────────────────────────────────────────────────────
+let currentSlide = 0;
+
+function buildCarousel() {
+  const track = document.getElementById('carousel-track');
+  const dots  = document.getElementById('carousel-dots');
+
+  PHOTOS.forEach((p, i) => {
+    const slide = document.createElement('div');
+    slide.className = 'carousel-slide';
+    const img = document.createElement('img');
+    img.src = photoUrls[p.file] || '';
+    img.alt = p.caption;
+    slide.appendChild(img);
+    track.appendChild(slide);
+
+    const dot = document.createElement('button');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.setAttribute('aria-label', `Go to photo ${i + 1}`);
+    dot.addEventListener('click', () => goToSlide(i));
+    dots.appendChild(dot);
+  });
+
+  updateCaption();
+}
+
+function goToSlide(n) {
+  currentSlide = (n + PHOTOS.length) % PHOTOS.length;
+  document.getElementById('carousel-track').style.transform =
+    `translateX(-${currentSlide * 100}%)`;
+  document.querySelectorAll('.dot').forEach((d, i) =>
+    d.classList.toggle('active', i === currentSlide)
+  );
+  updateCaption();
+}
+
+function updateCaption() {
+  const p = PHOTOS[currentSlide];
+  document.getElementById('caption-text').textContent =
+    `${currentSlide + 1} / ${PHOTOS.length}  ·  ${p.caption}`;
+  document.getElementById('caption-gps').textContent =
+    p.gpsLabel ? `📍 ${p.gpsLabel}` : '';
+}
+
+document.getElementById('carousel-prev').addEventListener('click', () => goToSlide(currentSlide - 1));
+document.getElementById('carousel-next').addEventListener('click', () => goToSlide(currentSlide + 1));
+
+// Swipe support
+(function addSwipe() {
+  const vp = document.getElementById('carousel-viewport');
+  let startX = null;
+  vp.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+  vp.addEventListener('touchend', e => {
+    if (startX === null) return;
+    const dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) > 40) goToSlide(currentSlide + (dx < 0 ? 1 : -1));
+    startX = null;
+  }, { passive: true });
+})();
+
+// ─── MAP ──────────────────────────────────────────────────────────────────────
+const map = L.map('map');
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 19,
+}).addTo(map);
+
+function skylineIcon() {
+  return L.divIcon({
+    className: '',
+    html: '<div class="skyline-marker"></div>',
+    iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -14],
+  });
+}
+function photoIcon() {
+  return L.divIcon({
+    className: '',
+    html: '<div class="photo-marker">📷</div>',
+    iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -20],
+  });
+}
+
+SKYLINE_LOCATIONS.forEach(loc => {
+  L.marker([loc.lat, loc.lng], { icon: skylineIcon() })
+    .addTo(map)
+    .bindPopup(`<strong>${loc.name}</strong><br><span style="font-size:0.82rem;color:#666">${loc.address}, ${loc.city}</span>`, { maxWidth: 220 });
+});
+
+// photo markers added after zip loads — see addPhotoMarkers()
+function addPhotoMarkers() {
+  PHOTOS.filter(p => p.lat !== null).forEach((p, idx) => {
+    const src = photoUrls[p.file] || '';
+    L.marker([p.lat, p.lng], { icon: photoIcon(), zIndexOffset: 1000 })
+      .addTo(map)
+      .bindPopup(`
+        <div class="photo-popup">
+          ${src ? `<img src="${src}" alt="${p.caption}">` : ''}
+          <div class="photo-caption">📷 ${p.caption}</div>
+        </div>`, { maxWidth: 240 })
+      .on('click', () => goToSlide(idx));
+  });
+}
+
+map.fitBounds(
+  L.latLngBounds(SKYLINE_LOCATIONS.map(l => [l.lat, l.lng])),
+  { padding: [30, 30] }
+);
+
+// ─── HAVERSINE ────────────────────────────────────────────────────────────────
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 3958.8;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+// ─── GEOCODE ──────────────────────────────────────────────────────────────────
+async function geocodeAddress(address) {
+  const url = "https://nominatim.openstreetmap.org/search?" +
+    new URLSearchParams({ q: address, format: "json", limit: "1", addressdetails: "0" });
+  const resp = await fetch(url, { headers: { "Accept-Language": "en" } });
+  if (resp.status === 429) throw new Error("__429__");
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (!data?.length) throw new Error("__NOTFOUND__");
+  return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), displayName: data[0].display_name };
+}
+
+// ─── FIND NEAREST ─────────────────────────────────────────────────────────────
+let userMarker = null;
+
+async function findNearest() {
+  const input    = document.getElementById("address-input");
+  const btn      = document.getElementById("find-btn");
+  const spinner  = document.getElementById("spinner");
+  const errorBox = document.getElementById("error-box");
+  const results  = document.getElementById("results");
+
+  const address = input.value.trim();
+  errorBox.style.display = "none";
+  results.style.display  = "none";
+
+  if (!address) { showError("Please enter an address to search."); return; }
+
+  spinner.style.display = "block";
+  btn.disabled = true;
+
+  try {
+    let geo;
+    try {
+      geo = await geocodeAddress(address);
+    } catch (err) {
+      if (err.message === "__429__")       showError("Too many requests. Please wait a moment and try again.");
+      else if (err.message === "__NOTFOUND__") showError("Address not found. Try adding a city and state.");
+      else showError("Cannot reach geocoding service. Check your internet connection.");
+      return;
+    }
+
+    const sorted = SKYLINE_LOCATIONS
+      .map(loc => ({ ...loc, distance: haversineDistance(geo.lat, geo.lng, loc.lat, loc.lng) }))
+      .sort((a, b) => a.distance - b.distance);
+
+    const nearest    = sorted[0];
+    const alsoNearby = sorted.slice(1, 5);
+
+    // Drop pin on map and pan to it
+    if (userMarker) map.removeLayer(userMarker);
+    userMarker = L.circleMarker([geo.lat, geo.lng], {
+      radius: 8, fillColor: '#FFD100', color: '#003087', weight: 2.5, fillOpacity: 1,
+    }).addTo(map).bindPopup('<strong>Your location</strong>').openPopup();
+    map.setView([geo.lat, geo.lng], 10, { animate: true });
+
+    document.getElementById("resolved-address").innerHTML =
+      `<strong>Searched:</strong> ${escapeHtml(geo.displayName)}`;
+    document.getElementById("far-warning").style.display = nearest.distance > 100 ? "block" : "none";
+    document.getElementById("winner-name").textContent    = nearest.name;
+    document.getElementById("winner-address").textContent = `${nearest.address}, ${nearest.city}`;
+    document.getElementById("winner-distance").innerHTML  = `${formatDist(nearest.distance)}<span>miles away</span>`;
+
+    const mq = encodeURIComponent(`${nearest.name} Skyline Chili ${nearest.address} ${nearest.city}`);
+    const oq = encodeURIComponent(address);
+    const dq = encodeURIComponent(`${nearest.address}, ${nearest.city}`);
+    document.getElementById("maps-link").href       = `https://www.google.com/maps/search/?api=1&query=${mq}`;
+    document.getElementById("directions-link").href = `https://www.google.com/maps/dir/?api=1&origin=${oq}&destination=${dq}`;
+
+    document.getElementById("nearby-list").innerHTML = alsoNearby.map(loc => `
+      <li class="nearby-item">
+        <div class="nearby-info">
+          <div class="nearby-name">${escapeHtml(loc.name)}</div>
+          <div class="nearby-addr">${escapeHtml(loc.address)}, ${escapeHtml(loc.city)}</div>
+        </div>
+        <div class="nearby-dist">${formatDist(loc.distance)} mi</div>
+      </li>`).join("");
+
+    results.style.display = "block";
+    document.getElementById("results").scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  } catch (err) {
+    showError(`Something went wrong: ${err.message}. Please try again.`);
+  } finally {
+    spinner.style.display = "none";
+    btn.disabled = false;
+  }
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function showError(msg) {
+  const box = document.getElementById("error-box");
+  box.textContent = msg;
+  box.style.display = "block";
+}
+function formatDist(miles) {
+  return miles < 10 ? miles.toFixed(1) : Math.round(miles).toLocaleString();
+}
+function escapeHtml(str) {
+  return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+document.getElementById("address-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") findNearest();
+});
+
+loadPhotos();
+</script>
+
+</body>
+</html>
